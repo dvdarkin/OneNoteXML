@@ -218,8 +218,8 @@ A: No. Read-only extraction. Your original notebooks are untouched.
 A: Not tested, you're welcome to test and report back.
 
 **Q: Why does my notebook content look so bad?**
-A: OneNote has very rich formatting capabilities not all of that can be mapped nicely into Markdown format. I only added support for what I've seen in my notebooks.
-You can run the tool with --debug flag to explore raw XML to see how it looks at the core if something is not working for you.
+A: OneNote has very rich formatting capabilities not all of that can be mapped nicely into Markdown format. I only added support for what I've seen in my notebooks. You can run the tool with --debug flag to explore raw XML to see how it looks at the core if something is not working for you.
+
 ---
 
 **Status:** Working tool. Use at your own risk. No warranty. MIT licensed.
