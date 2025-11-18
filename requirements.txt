@@ -1,0 +1,17 @@
+# OneNoteXML - Direct XML extraction from OneNote to Markdown
+# Python 3.8+ required
+
+# Core dependencies
+beautifulsoup4>=4.12.0
+
+# Windows-only dependencies (OneNote COM API access)
+pywin32>=300; sys_platform == 'win32'
+
+# Note: lxml is optional for faster parsing
+# If lxml installation fails, BeautifulSoup will use html.parser (built-in)
+# lxml>=4.9.0
+
+# Platform requirements (not installable via pip, for documentation):
+# - Windows OS (OneNote COM API)
+# - OneNote 2010-2013 desktop version installed
+# - Python 3.8+

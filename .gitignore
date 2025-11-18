@@ -1,0 +1,41 @@
+# OneNoteXML - Generated files and personal data
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Personal data - IMPORTANT: Don't commit these
+output/
+exports/
+test_data/
+debug_output/
+logs/
+*.one
+*.onetoc2
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Project specific
+image_extraction_map.json
+*.xml
+*.mht
+
+# Keep structure but ignore contents
+!.gitignore
+!.github/
