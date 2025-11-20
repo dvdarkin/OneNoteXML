@@ -75,12 +75,13 @@ def parse_pipeline_args(script_name: str) -> Tuple[str, Path]:
 def group_pages_by_section(xml_files: List[Path]) -> Dict[str, List[Path]]:
     """
     Group XML files by their section (parent directory).
+    Sort pages by numeric prefix to preserve OneNote hierarchy order.
 
     Args:
         xml_files: List of XML file paths
 
     Returns:
-        Dictionary mapping section names to lists of XML files
+        Dictionary mapping section names to lists of XML files (sorted by numeric prefix)
     """
     sections = defaultdict(list)
 
@@ -88,7 +89,37 @@ def group_pages_by_section(xml_files: List[Path]) -> Dict[str, List[Path]]:
         section_name = xml_file.parent.name
         sections[section_name].append(xml_file)
 
+    # Sort each section's pages by numeric prefix (001_, 002_, etc.)
+    for section_name in sections:
+        sections[section_name] = sort_pages_by_hierarchy(sections[section_name])
+
     return dict(sections)
+
+
+def sort_pages_by_hierarchy(xml_files: List[Path]) -> List[Path]:
+    """
+    Sort XML files by numeric prefix to maintain OneNote hierarchy order.
+
+    Files with numeric prefix (e.g., '001_Main.xml') sort by number.
+    Files without prefix sort alphabetically at the end.
+
+    Args:
+        xml_files: List of XML file paths
+
+    Returns:
+        Sorted list of XML files
+    """
+    import re
+
+    def get_sort_key(path: Path) -> tuple:
+        # Extract numeric prefix if present (e.g., "001" from "001_Main.xml")
+        match = re.match(r'^(\d+)_', path.name)
+        if match:
+            return (0, int(match.group(1)))  # (has_prefix, number)
+        else:
+            return (1, path.name)  # (no_prefix, alphabetical)
+
+    return sorted(xml_files, key=get_sort_key)
 
 
 def discover_xml_files(xml_input_dir: Path, logger: logging.Logger) -> List[Path]:

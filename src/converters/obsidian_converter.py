@@ -38,20 +38,63 @@ class ObsidianConverter:
     def convert_section(self, parsed_data: Dict) -> Path:
         """Convert a parsed section to Obsidian vault structure."""
         section_name = parsed_data['section_name']
-        
+
         # Determine section category and placement
         section_category = self._categorize_section(section_name)
-        
+
         # Create section index note if multiple pages
         pages = parsed_data.get('pages', [])
         if len(pages) > 1:
             self._create_section_index(section_name, pages, section_category)
-        
-        # Convert each page
-        for page in pages:
-            self._convert_page(page, section_name, section_category)
-            
+
+        # Build page hierarchy and convert with nested folder structure
+        self._convert_pages_with_hierarchy(pages, section_name, section_category)
+
         return self.vault_root
+
+    def _convert_pages_with_hierarchy(self, pages: List[Dict], section_name: str, category: str):
+        """Convert pages preserving OneNote hierarchy as nested folders.
+
+        Pages are already sorted by hierarchy order. Use pageLevel to determine
+        parent-child relationships and create nested folder structure.
+        """
+        # Track parent page at each level for building hierarchy
+        # level_stack[level] = (page_data, folder_path)
+        level_stack = {}
+
+        for page in pages:
+            page_level = int(page.get('metadata', {}).get('pageLevel', 1))
+
+            # Determine parent folder based on hierarchy
+            if page_level == 1:
+                # Top-level page - goes in section folder
+                parent_folder = self._create_section_folder(section_name, category)
+            else:
+                # Nested page - find parent at level-1
+                parent_level = page_level - 1
+                if parent_level in level_stack:
+                    parent_page, parent_base_folder = level_stack[parent_level]
+                    parent_page_title = parent_page.get('title') or parent_page.get('page_name') or 'Untitled'
+                    parent_page_title = self._strip_html_tags(parent_page_title).strip() or 'Untitled'
+                    parent_filename = self._sanitize_filename(parent_page_title)
+
+                    # Create subfolder named after parent page
+                    parent_folder = parent_base_folder / parent_filename
+                    parent_folder.mkdir(exist_ok=True)
+                else:
+                    # Orphaned page (parent not found) - put in section folder
+                    parent_folder = self._create_section_folder(section_name, category)
+
+            # Convert page to markdown in the appropriate folder
+            self._convert_page_to_folder(page, section_name, category, parent_folder)
+
+            # Track this page as potential parent for subsequent pages
+            level_stack[page_level] = (page, parent_folder)
+
+            # Clear deeper levels (we've moved back up the hierarchy)
+            levels_to_clear = [lvl for lvl in level_stack.keys() if lvl > page_level]
+            for lvl in levels_to_clear:
+                del level_stack[lvl]
         
     def _categorize_section(self, section_name: str) -> str:
         """Categorize section based on name patterns."""
@@ -115,8 +158,8 @@ class ObsidianConverter:
         with open(index_path, 'w', encoding='utf-8') as f:
             f.write('\n'.join(content))
             
-    def _convert_page(self, page_data: Dict, section_name: str, category: str):
-        """Convert a single OneNote page to Obsidian markdown."""
+    def _convert_page_to_folder(self, page_data: Dict, section_name: str, category: str, parent_folder: Path):
+        """Convert a single OneNote page to Obsidian markdown in specified folder."""
         # Try title first, then fall back to page_name, then default
         page_title = page_data.get('title') or page_data.get('page_name') or 'Untitled'
 
@@ -130,17 +173,16 @@ class ObsidianConverter:
         # Ensure title is not empty
         if not page_title.strip():
             page_title = 'Untitled'
-        
-        # Create filename and determine location (preserve hierarchy)
+
+        # Create filename in the specified parent folder
         if category == 'daily' and self._is_date_like(page_title):
             # Handle daily notes with proper date format
             filename = self._normalize_date_title(page_title)
             note_path = self.daily_dir / f"{filename}.md"
         else:
-            # Create section folder and place page inside it
-            section_folder = self._create_section_folder(section_name, category)
+            # Place page in the specified parent folder (maintains hierarchy)
             filename = self._sanitize_filename(page_title)
-            note_path = section_folder / f"{filename}.md"
+            note_path = parent_folder / f"{filename}.md"
         
         # Track note for internal linking (include folder for non-daily notes)
         if category == 'daily':
@@ -561,8 +603,8 @@ class ObsidianConverter:
         # Remove multiple consecutive hyphens
         filename = re.sub(r'-+', '-', filename)
 
-        # Trim hyphens from start/end
-        filename = filename.strip('-_')
+        # Trim hyphens from start/end (preserve underscores as they're often meaningful)
+        filename = filename.strip('-')
 
         # Ensure not empty
         if not filename:

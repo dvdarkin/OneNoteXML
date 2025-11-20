@@ -66,8 +66,9 @@ try {
                     try {
                         $pageXml = ""
                         $onenote.GetPageContent($page.ID, [ref]$pageXml)
-                        
-                        $pageFile = Join-Path $sectionDir "$safePageName.xml"
+
+                        # Prepend page index to preserve OneNote hierarchy order
+                        $pageFile = Join-Path $sectionDir ("{0:D3}_{1}.xml" -f $pageIndex, $safePageName)
                         $pageXml | Out-File $pageFile -Encoding UTF8
                         Write-Host "  Page $pageIndex : $pageName -> XML"
                     } catch {
