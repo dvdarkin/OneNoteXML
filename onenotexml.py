@@ -84,13 +84,15 @@ def check_requirements():
 
     return all_passed
 
-def run_subprocess_with_progress(cmd, timeout=300, show_progress=True):
+def run_subprocess_with_progress(cmd, timeout=300, show_progress=True, debug=False, logger=None):
     """Run subprocess and stream output in real-time.
 
     Args:
         cmd: Command list to execute
         timeout: Timeout in seconds
         show_progress: If True, print output as it arrives
+        debug: If True, log exceptions and detailed output
+        logger: Logger instance for debug output
 
     Returns:
         tuple: (returncode, stdout, stderr)
@@ -121,8 +123,15 @@ def run_subprocess_with_progress(cmd, timeout=300, show_progress=True):
                     if show_progress:
                         # Indent subprocess output for clarity
                         print(f"      {line}")
-        except Exception:
-            pass  # Stream closed or encoding error
+                    if debug and logger:
+                        logger.debug(f"{prefix}{line}")
+        except Exception as e:
+            # In debug mode, log exceptions instead of silently passing
+            if debug and logger:
+                logger.error(f"Exception reading subprocess stream: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+            # Always pass to avoid breaking the thread, but now we've logged it
 
     # Start reader threads
     stdout_thread = threading.Thread(
@@ -160,11 +169,39 @@ def run_extraction(notebook_name: str, output_format: str, output_dir: Path, deb
         notebook_name: Name of the OneNote notebook
         output_format: Output format ('obsidian' or 'logseq')
         output_dir: Base output directory
-        debug: If True, keep interim files (XML, images) in debug folder
+        debug: If True, enable debug logging and keep interim files
     """
 
     print(f"\nOneNoteXML - Extracting '{notebook_name}'")
     print("=" * 60)
+
+    # Setup logging for extraction process
+    from datetime import datetime
+    log_dir = output_dir / 'logs'
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    log_file = log_dir / f'onenotexml_{notebook_name}_{timestamp}.log'
+
+    # Set log level based on debug flag
+    log_level = logging.DEBUG if debug else logging.INFO
+
+    logging.basicConfig(
+        level=log_level,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_file, encoding='utf-8'),
+            logging.StreamHandler(sys.stdout) if debug else logging.NullHandler()
+        ],
+        force=True  # Reset any existing logging configuration
+    )
+
+    logger = logging.getLogger('OneNoteXML')
+    logger.setLevel(log_level)
+
+    logger.info(f"OneNoteXML extraction started for '{notebook_name}'")
+    logger.info(f"Format: {output_format}, Debug mode: {debug}")
+    logger.info(f"Log file: {log_file}")
 
     # Determine output paths
     notebook_output = output_dir / notebook_name
@@ -179,6 +216,7 @@ def run_extraction(notebook_name: str, output_format: str, output_dir: Path, deb
     # Step 1: Export XML from OneNote
     print("\n[1/3] Exporting XML from OneNote...")
     print(f"      → {xml_dir}")
+    logger.info(f"Step 1: Exporting XML to {xml_dir}")
 
     # Validate PowerShell script exists
     ps_script = Path(__file__).parent / "scripts" / "export_xml_notebook.ps1"
@@ -199,34 +237,54 @@ def run_extraction(notebook_name: str, output_format: str, output_dir: Path, deb
         return False
 
     try:
+        logger.info("Starting XML export from OneNote...")
         returncode, stdout, stderr = run_subprocess_with_progress(
             ["PowerShell", "-ExecutionPolicy", "Bypass", "-File",
              str(ps_script), "-NotebookName", notebook_name,
              "-OutputPath", str(xml_dir)],
             timeout=300,
-            show_progress=True
+            show_progress=True,
+            debug=debug,
+            logger=logger
         )
 
         if returncode != 0:
-            print(f"ERROR: XML export failed (exit code: {returncode})")
+            error_msg = f"XML export failed (exit code: {returncode})"
+            print(f"ERROR: {error_msg}")
+            logger.error(error_msg)
             if stderr:
                 print(f"   Error details:")
+                logger.error("PowerShell stderr output:")
                 for line in stderr.strip().split('\n')[:10]:  # Show first 10 lines
                     print(f"     {line}")
+                    logger.error(f"  {line}")
+                if debug:
+                    # Log full stderr in debug mode
+                    logger.debug("Full stderr output:")
+                    logger.debug(stderr)
             return False
 
         print("      XML export completed")
+        logger.info("XML export completed successfully")
 
     except subprocess.TimeoutExpired:
-        print("ERROR: XML export timed out (>5 minutes)")
+        error_msg = "XML export timed out (>5 minutes)"
+        print(f"ERROR: {error_msg}")
+        logger.error(error_msg)
         return False
     except Exception as e:
-        print(f"ERROR: {e}")
+        error_msg = f"XML export error: {e}"
+        print(f"ERROR: {error_msg}")
+        logger.error(error_msg)
+        if debug:
+            import traceback
+            logger.debug(traceback.format_exc())
         return False
 
     # Step 2: Convert to markdown (Obsidian or Logseq)
     print(f"\n[2/3] Converting to {output_format} format...")
     print(f"      → {vault_dir}")
+    logger.info(f"Step 2: Converting to {output_format} format at {vault_dir}")
 
     if output_format == "obsidian":
         converter_script = Path(__file__).parent / "src" / "obsidian_pipeline.py"
@@ -238,29 +296,46 @@ def run_extraction(notebook_name: str, output_format: str, output_dir: Path, deb
         return False
 
     try:
+        logger.info(f"Starting {output_format} conversion...")
         returncode, stdout, stderr = run_subprocess_with_progress(
             ["python", str(converter_script), notebook_name, str(notebook_output)],
             timeout=300,
-            show_progress=True
+            show_progress=True,
+            debug=debug,
+            logger=logger
         )
 
         if returncode != 0:
-            print(f"ERROR: Conversion failed (exit code: {returncode})")
+            error_msg = f"Conversion failed (exit code: {returncode})"
+            print(f"ERROR: {error_msg}")
+            logger.error(error_msg)
             if stderr:
                 print(f"   Error details:")
+                logger.error("Conversion stderr output:")
                 for line in stderr.strip().split('\n')[:10]:
                     print(f"     {line}")
+                    logger.error(f"  {line}")
+                if debug:
+                    logger.debug("Full stderr output:")
+                    logger.debug(stderr)
             return False
 
         print(f"      {output_format.title()} conversion completed")
+        logger.info(f"{output_format} conversion completed successfully")
 
     except Exception as e:
-        print(f"ERROR: {e}")
+        error_msg = f"Conversion error: {e}"
+        print(f"ERROR: {error_msg}")
+        logger.error(error_msg)
+        if debug:
+            import traceback
+            logger.debug(traceback.format_exc())
         return False
 
     # Step 3: Extract images
     print("\n[3/3] Extracting images...")
     print(f"      → {images_dir}")
+    logger.info(f"Step 3: Extracting images to {images_dir}")
 
     image_map = vault_dir / "image_extraction_map.json"
     if not image_map.exists():
@@ -274,19 +349,27 @@ def run_extraction(notebook_name: str, output_format: str, output_dir: Path, deb
         return True
 
     try:
+        logger.info("Starting image extraction...")
         returncode, stdout, stderr = run_subprocess_with_progress(
             ["PowerShell", "-ExecutionPolicy", "Bypass", "-File",
              str(ps_image_script), "-NotebookName", notebook_name,
              "-OutputPath", str(images_dir), "-MapFile", str(image_map)],
             timeout=600,  # 10 minute timeout for images
-            show_progress=True
+            show_progress=True,
+            debug=debug,
+            logger=logger
         )
 
         if returncode != 0:
-            print(f"WARNING: Some images may not have extracted")
-            print(f"   This is normal - OneNote stores some images externally")
+            warning_msg = "Some images may not have extracted (normal - OneNote stores some images externally)"
+            print(f"WARNING: {warning_msg}")
+            logger.warning(warning_msg)
+            if debug and stderr:
+                logger.debug("Image extraction stderr:")
+                logger.debug(stderr)
         else:
             print("      Image extraction completed")
+            logger.info("Image extraction completed successfully")
 
         # Copy images to vault (do this regardless of extraction result)
         if output_format == "obsidian":
@@ -303,10 +386,12 @@ def run_extraction(notebook_name: str, output_format: str, output_dir: Path, deb
                 failed_count = 0
 
                 if images_to_copy:
+                    logger.info(f"Copying {len(images_to_copy)} images to vault...")
                     for img in images_to_copy:
                         try:
                             # Verify source file exists and is readable
                             if not img.is_file():
+                                logger.debug(f"Skipping non-file: {img}")
                                 continue
 
                             # Copy with error handling
@@ -316,25 +401,43 @@ def run_extraction(notebook_name: str, output_format: str, output_dir: Path, deb
                             # Verify copy succeeded
                             if dest_path.exists() and dest_path.stat().st_size > 0:
                                 copied_count += 1
+                                logger.debug(f"Copied: {img.name}")
                             else:
                                 failed_count += 1
-                                print(f"      Failed to copy: {img.name}")
+                                error_msg = f"Failed to copy: {img.name}"
+                                print(f"      {error_msg}")
+                                logger.error(error_msg)
                         except (IOError, OSError) as e:
                             failed_count += 1
-                            print(f"      Error copying {img.name}: {e}")
+                            error_msg = f"Error copying {img.name}: {e}"
+                            print(f"      {error_msg}")
+                            logger.error(error_msg)
 
                     # Report results
                     print(f"      Images copied: {copied_count} of {len(images_to_copy)}")
+                    logger.info(f"Images copied: {copied_count}/{len(images_to_copy)}")
                     if failed_count > 0:
                         print(f"      Failed to copy: {failed_count} images")
+                        logger.warning(f"Failed to copy: {failed_count} images")
                 else:
                     print(f"      No images found in {images_dir}")
+                    logger.info(f"No images found in {images_dir}")
 
             except Exception as e:
-                print(f"      Error setting up attachments: {e}")
+                error_msg = f"Error setting up attachments: {e}"
+                print(f"      {error_msg}")
+                logger.error(error_msg)
+                if debug:
+                    import traceback
+                    logger.debug(traceback.format_exc())
 
     except Exception as e:
-        print(f"WARNING: Image extraction issue: {e}")
+        warning_msg = f"Image extraction issue: {e}"
+        print(f"WARNING: {warning_msg}")
+        logger.warning(warning_msg)
+        if debug:
+            import traceback
+            logger.debug(traceback.format_exc())
         print("   Continuing anyway...")
 
     # Final verification
@@ -357,10 +460,16 @@ def run_extraction(notebook_name: str, output_format: str, output_dir: Path, deb
             return False
 
     except Exception as e:
-        print(f"      Could not verify output: {e}")
+        error_msg = f"Could not verify output: {e}"
+        print(f"      {error_msg}")
+        logger.error(error_msg)
+        if debug:
+            import traceback
+            logger.debug(traceback.format_exc())
 
     # Reorganize output structure
     print(f"\n[Cleanup & Organization]")
+    logger.info("Starting cleanup and organization...")
     try:
         import shutil
 
@@ -433,9 +542,15 @@ def run_extraction(notebook_name: str, output_format: str, output_dir: Path, deb
             print(f"      Cleaned up temporary directories")
 
     except Exception as e:
-        print(f"      Warning during cleanup: {e}")
+        warning_msg = f"Warning during cleanup: {e}"
+        print(f"      {warning_msg}")
+        logger.warning(warning_msg)
+        if debug:
+            import traceback
+            logger.debug(traceback.format_exc())
         print(f"      Vault is still available at: {vault_dir}")
 
+    logger.info("Extraction pipeline completed successfully")
     return True
 
 def main():
