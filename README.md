@@ -31,6 +31,28 @@ So I built **OneNoteXML** - direct XML extraction using OneNote's COM API. XML i
 
 ---
 
+## Format Support Status
+
+**Obsidian** (Primary platform - fully supported):
+- Nested page hierarchy (folder structure)
+- YAML frontmatter with metadata
+- Wikilinks for internal references
+- Image embedding with proper paths
+- Actively maintained (I use Obsidian daily)
+
+**Logseq** (Basic support):
+- Page export with properties
+- Block-based content structure
+- Task detection (TODO/DONE)
+- Flat page structure (no hierarchy)
+- Limited testing (contributions welcome)
+
+**Why the difference?** I built this tool to migrate my notebooks to Obsidian. That's what I use, test, and maintain. Logseq support exists because I couldn't choose initially what would work for me. Now that I have, I can't guarantee feature parity or catch platform-specific issues.
+
+**If you need better Logseq support:** Pull requests welcome! The XML parser is format-agnostic, so improving the Logseq converter is straightforward if you know Logseq's conventions.
+
+---
+
 ## Quick Start
 
 ### 1. Install
@@ -219,6 +241,9 @@ A: Not tested, you're welcome to test and report back.
 
 **Q: Why does my notebook content look so bad?**
 A: OneNote has very rich formatting capabilities not all of that can be mapped nicely into Markdown format. I only added support for what I've seen in my notebooks. You can run the tool with --debug flag to explore raw XML to see how it looks at the core if something is not working for you.
+
+**Q: Why is Logseq support limited compared to Obsidian?**
+A: I use Obsidian daily, so that's what gets tested and improved. Logseq support works for basic use cases, but I can't maintain features for a platform I don't use. If you need better Logseq support, contributions are welcome - the architecture makes it easy to improve the Logseq converter independently.
 
 ---
 

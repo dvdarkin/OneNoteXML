@@ -441,6 +441,15 @@ def run_extraction(notebook_name: str, output_format: str, output_dir: Path, deb
 def main():
     """Main entry point."""
 
+    # Set console output encoding to UTF-8 for Windows
+    if sys.stdout.encoding != 'utf-8':
+        try:
+            sys.stdout.reconfigure(encoding='utf-8')
+            sys.stderr.reconfigure(encoding='utf-8')
+        except (AttributeError, OSError):
+            # Fallback for older Python versions or if reconfigure fails
+            pass
+
     parser = argparse.ArgumentParser(
         description="OneNoteXML - Extract OneNote notebooks to Markdown",
         formatter_class=argparse.RawDescriptionHelpFormatter,
