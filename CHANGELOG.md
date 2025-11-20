@@ -2,6 +2,26 @@
 
 All notable changes to OneNoteXML will be documented in this file.
 
+## [1.0.2] - 2025-11-20
+
+### Added
+- Enhanced debug logging with `--debug` flag
+  - Full exception tracebacks now captured in log files
+  - PowerShell subprocess output logged in debug mode
+  - Stream reading exceptions now logged instead of silently ignored
+  - All errors written to both console and log files
+
+### Fixed
+- **Windows path length limit issue** - Image filenames now max ~30 chars (was 200+)
+  - Smart shortened naming: `{section_short}-{page_short}-{counter}.png`
+  - Example: `ctrade-ideas-001.png` instead of `c.trade.diary_Trading ideas_alt-text_1.png`
+  - Prevents "path too long" errors during image extraction
+  - Includes collision detection with 4-char hash suffix
+- **Page name matching with trailing spaces**
+  - PowerShell now tries multiple page name variations (trimmed, case-insensitive)
+  - Fixes "Page not found" errors for pages with trailing/leading whitespace
+  - Matches section name variation logic for consistency
+
 ## [1.0.1] - 2025-11-20
 
 ### Added

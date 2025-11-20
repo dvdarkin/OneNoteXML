@@ -162,10 +162,35 @@ try {
                 continue
             }
             
-            # Find the page
+            # Find the page - try multiple variations
             $page = $section.Page | Where-Object { $_.name -eq $pageName }
+
+            # If exact match fails, try with trimmed whitespace
             if (-not $page) {
-                Write-Host "  ERROR: Page '$pageName' not found in section '$sectionName'"
+                $page = $section.Page | Where-Object { $_.name.Trim() -eq $pageName }
+                if ($page) {
+                    Write-Host "  Found page with trimmed whitespace: '$($page.name)'"
+                }
+            }
+
+            # If still not found, try case-insensitive match
+            if (-not $page) {
+                $page = $section.Page | Where-Object { $_.name -ieq $pageName }
+                if ($page) {
+                    Write-Host "  Found page with case-insensitive match: '$($page.name)'"
+                }
+            }
+
+            # If still not found, try trimmed case-insensitive
+            if (-not $page) {
+                $page = $section.Page | Where-Object { $_.name.Trim() -ieq $pageName.Trim() }
+                if ($page) {
+                    Write-Host "  Found page with trimmed case-insensitive match: '$($page.name)'"
+                }
+            }
+
+            if (-not $page) {
+                Write-Host "  ERROR: Page '$pageName' not found in section '$sectionName' (tried variations too)"
                 $failureCount++
                 continue
             }

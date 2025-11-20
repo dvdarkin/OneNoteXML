@@ -14,11 +14,12 @@ import base64
 
 class MarkdownConverter:
     """Convert parsed OneNote content to markdown."""
-    
+
     def __init__(self, output_dir: Path):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.image_dictionary = {}  # CallbackID -> target file path mapping
+        self.used_image_names = set()  # Track used names to avoid collisions
         
     def convert_section(self, parsed_data: Dict) -> Path:
         """Convert a parsed section to markdown files."""
@@ -122,13 +123,16 @@ class MarkdownConverter:
         for i, img in enumerate(all_images):
             callback_id = img.get('callback_id')
             if callback_id:
-                # Generate image filename
-                alt_text = img.get('alt', f'image_{i+1}')
-                safe_alt = self._sanitize_filename(alt_text)[:20]
-                
-                # Create filename: section_page_description_index.ext
-                image_filename = f"{section_name}_{page_name}_{safe_alt}_{i+1}.png"  # Default to PNG
+                # Generate short, unique filename
+                # Format: {section_short}-{page_short}-{counter}.png
+                # Example: ctrade-ideas-001.png (max ~30 chars)
+                image_filename = self._generate_image_filename(
+                    section_name, page_name, i + 1, extension='png'
+                )
                 image_path = assets_dir / image_filename
+
+                # Store alt text for reference (not in filename)
+                alt_text = img.get('alt', f'image_{i+1}')
                 
                 # Store relative path from markdown file
                 relative_path = f"assets/{image_filename}"
@@ -367,6 +371,88 @@ class MarkdownConverter:
         # Remove trailing dots/spaces
         name = name.strip('. ')
         return name or 'untitled'
+
+    def _shorten_name(self, name: str, max_length: int = 10) -> str:
+        """
+        Intelligently shorten a name while preserving readability.
+
+        Strategy:
+        1. Remove common words (the, a, an, of, for, with, etc.)
+        2. Use abbreviations for long words
+        3. Keep consonants over vowels if needed
+        4. Limit to max_length characters
+        """
+        # Clean and normalize
+        name = name.strip().lower()
+
+        # Remove common words
+        common_words = {'the', 'a', 'an', 'of', 'for', 'with', 'and', 'or', 'in', 'on', 'at', 'to'}
+        words = name.split()
+        words = [w for w in words if w not in common_words]
+
+        if not words:
+            words = name.split()  # Fallback to original
+
+        # Join and clean
+        shortened = '-'.join(words)
+        shortened = re.sub(r'[^a-z0-9-]', '', shortened)  # Keep only alphanumeric and hyphens
+        shortened = re.sub(r'-+', '-', shortened)  # Collapse multiple hyphens
+
+        # Truncate if still too long
+        if len(shortened) > max_length:
+            # Try to keep meaningful parts
+            parts = shortened.split('-')
+            result = []
+            current_len = 0
+
+            for part in parts:
+                if current_len + len(part) + 1 <= max_length:
+                    result.append(part)
+                    current_len += len(part) + 1
+                else:
+                    # Add abbreviated form if space
+                    abbrev = part[:max(1, max_length - current_len - 1)]
+                    if abbrev:
+                        result.append(abbrev)
+                    break
+
+            shortened = '-'.join(result) if result else shortened[:max_length]
+
+        return shortened.strip('-') or 'img'
+
+    def _generate_image_filename(self, section_name: str, page_name: str,
+                                 image_index: int, extension: str = 'png') -> str:
+        """
+        Generate a short, unique image filename with collision handling.
+
+        Format: {section_short}-{page_short}-{counter}.{ext}
+        Example: ctrade-ideas-001.png
+        Max length: ~30 characters
+
+        If collision detected, adds 4-char random suffix: ctrade-ideas-001-a3f9.png
+        """
+        import hashlib
+
+        # Shorten section and page names
+        section_short = self._shorten_name(section_name, max_length=8)
+        page_short = self._shorten_name(page_name, max_length=8)
+
+        # Generate base filename with counter
+        counter = f"{image_index:03d}"
+        base_name = f"{section_short}-{page_short}-{counter}"
+        filename = f"{base_name}.{extension}"
+
+        # Check for collision
+        if filename in self.used_image_names:
+            # Generate a 4-character hash from the full names for uniqueness
+            hash_input = f"{section_name}-{page_name}-{image_index}".encode()
+            short_hash = hashlib.md5(hash_input).hexdigest()[:4]
+            filename = f"{base_name}-{short_hash}.{extension}"
+
+        # Track this filename
+        self.used_image_names.add(filename)
+
+        return filename
 
 
 def main():
